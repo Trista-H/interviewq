@@ -3,8 +3,10 @@
     <div class="full-width q-px-xl">
       <div class="q-mb-xl">
         <q-input v-model="tempData.name" label="姓名" />
-        <q-input v-model="tempData.age" label="年齡" />
-        <q-btn color="primary" class="q-mt-md">新增</q-btn>
+        <q-input v-model="tempData.age" label="年齡" type="number" />
+        <q-btn @click="createOrUpdateData" color="primary" class="q-mt-md"
+          >新增/更新</q-btn
+        >
       </div>
 
       <q-table
@@ -12,7 +14,7 @@
         bordered
         ref="tableRef"
         :rows="blockData"
-        :columns="(tableConfig as QTableProps['columns'])"
+        :columns="tableConfig"
         row-key="id"
         hide-pagination
         separator="cell"
@@ -29,37 +31,26 @@
 
         <template v-slot:body="props">
           <q-tr :props="props">
-            <q-td
-              v-for="col in props.cols"
-              :key="col.name"
-              :props="props"
-              style="min-width: 120px"
-            >
-              <div>{{ col.value }}</div>
+            <q-td v-for="col in props.cols" :key="col.name" :props="props">
+              <div>{{ props.row[col.field] }}</div>
             </q-td>
-            <q-td class="text-right" auto-width v-if="tableButtons.length > 0">
+            <q-td class="text-right" auto-width>
               <q-btn
-                @click="handleClickOption(btn, props.row)"
-                v-for="(btn, index) in tableButtons"
-                :key="index"
+                @click="editData(props.row)"
                 size="sm"
                 color="grey-6"
                 round
                 dense
-                :icon="btn.icon"
-                class="q-ml-md"
-                padding="5px 5px"
-              >
-                <q-tooltip
-                  transition-show="scale"
-                  transition-hide="scale"
-                  anchor="top middle"
-                  self="bottom middle"
-                  :offset="[10, 10]"
-                >
-                  {{ btn.label }}
-                </q-tooltip>
-              </q-btn>
+                icon="edit"
+              />
+              <q-btn
+                @click="confirmDelete(props.row.id)"
+                size="sm"
+                color="grey-6"
+                round
+                dense
+                icon="delete"
+              />
             </q-td>
           </q-tr>
         </template>
@@ -77,64 +68,114 @@
   </q-page>
 </template>
 
-<script setup lang="ts">
+<script setup>
 import axios from 'axios';
-import { QTableProps } from 'quasar';
 import { ref } from 'vue';
-interface btnType {
-  label: string;
-  icon: string;
-  status: string;
-}
-const blockData = ref([
-  {
-    name: 'test',
-    age: 25,
-  },
-]);
-const tableConfig = ref([
-  {
-    label: '姓名',
-    name: 'name',
-    field: 'name',
-    align: 'left',
-  },
-  {
-    label: '年齡',
-    name: 'age',
-    field: 'age',
-    align: 'left',
-  },
-]);
-const tableButtons = ref([
-  {
-    label: '編輯',
-    icon: 'edit',
-    status: 'edit',
-  },
-  {
-    label: '刪除',
-    icon: 'delete',
-    status: 'delete',
-  },
-]);
+import { useQuasar } from 'quasar';
 
-const tempData = ref({
-  name: '',
-  age: '',
-});
-function handleClickOption(btn, data) {
-  // ...
+const $q = useQuasar();
+
+const blockData = ref([]);
+const tableConfig = [
+  { label: '姓名', name: 'name', field: 'name', align: 'left' },
+  { label: '年齡', name: 'age', field: 'age', align: 'left' },
+];
+
+const tempData = ref({ id: null, name: '', age: null });
+
+async function fetchData() {
+  try {
+    const response = await axios.get(
+      'https://dahua.metcfire.com.tw/api/CRUDTest/a'
+    );
+    blockData.value = response.data;
+  } catch (error) {
+    console.error('Error fetching data:', error);
+  }
 }
+
+async function createOrUpdateData() {
+  try {
+    if (tempData.value.id) {
+      await axios.patch(
+        'https://dahua.metcfire.com.tw/api/CRUDTest',
+        tempData.value
+      );
+      const index = blockData.value.findIndex(
+        (item) => item.id === tempData.value.id
+      );
+      if (index !== -1) {
+        blockData.value[index] = { ...tempData.value };
+      }
+    } else {
+      const response = await axios.post(
+        'https://dahua.metcfire.com.tw/api/CRUDTest',
+        tempData.value
+      );
+      blockData.value.push(response.data);
+    }
+    tempData.value = { id: null, name: '', age: null };
+  } catch (error) {
+    console.error(
+      'Error creating or updating data:',
+      error.response ? error.response.data : error.message
+    );
+  }
+}
+
+async function deleteData(id) {
+  try {
+    await axios.delete(`https://dahua.metcfire.com.tw/api/CRUDTest/${id}`);
+    blockData.value = blockData.value.filter((item) => item.id !== id);
+  } catch (error) {
+    console.error('Error deleting data:', error);
+  }
+}
+
+function editData(data) {
+  tempData.value = { ...data };
+}
+
+function confirmDelete(id) {
+  $q.dialog({
+    title: '確認刪除',
+    message: '你確定要刪除此條目嗎？',
+    ok: {
+      label: '確認',
+      color: 'negative',
+    },
+    cancel: {
+      label: '取消',
+      color: 'primary',
+    },
+  })
+    .onOk(() => {
+      deleteData(id);
+    })
+    .onCancel(() => {
+      console.log('取消刪除操作');
+    });
+}
+
+fetchData();
 </script>
 
-<style lang="scss" scoped>
+<style scoped>
 .q-table th {
   font-size: 20px;
   font-weight: bold;
 }
-
 .q-table tbody td {
   font-size: 18px;
+}
+tr th:nth-child(1) {
+  width: 80%;
+}
+tr th:nth-child(2),
+tr th:nth-child(3) {
+  width: 10%;
+}
+tr button {
+  margin-right: 1rem;
 }
 </style>
